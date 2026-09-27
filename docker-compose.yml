@@ -1,0 +1,61 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: vitalsignai-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: vitalsignai_root_pw
+      MYSQL_DATABASE: vitalsignai
+    ports:
+      - "3307:3306" # host:container — avoids clashing with a local MySQL on 3306
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/create_database.sql:/docker-entrypoint-initdb.d/create_database.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-uroot",
+          "-pvitalsignai_root_pw",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./backend
+    container_name: vitalsignai-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+pymysql://root:vitalsignai_root_pw@mysql:3306/vitalsignai
+      SECRET_KEY: docker-demo-secret-change-if-shared-publicly
+      ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
+      CORS_ORIGINS: http://localhost:3000
+      REPORT_UPLOAD_DIR: /app/uploads
+    volumes:
+      - report_uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8000:8000" # optional: lets you open http://localhost:8000/docs directly
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: vitalsignai-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+  report_uploads:
